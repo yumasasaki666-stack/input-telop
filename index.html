@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>テロップ入力ツール</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#1e1e1e;--bg2:#2a2a2a;--bg3:#333;--bg4:#3d3d3d;
+  --border:#444;--border2:#555;
+  --text:#e0e0e0;--text2:#aaa;--text3:#666;
+  --accent:#4a9eff;--accent-bg:#1a3a5c;
+  --warn:#e8a020;--warn-bg:#3a2a00;
+  --danger:#e05050;--green:#4caf50;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:"Yu Gothic UI","Meiryo UI",Meiryo,sans-serif;font-size:13px}
+body{display:flex;flex-direction:column;overflow:hidden}
+
+/* ヘッダー */
+#header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg2)}
+#header-title{font-size:13px;font-weight:bold;color:var(--text2)}
+#stats{font-size:12px;color:var(--text3)}
+
+/* ショートカットバー */
+#sc-bar{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+.sc-btn{display:flex;align-items:center;gap:3px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:11px;font-family:inherit;transition:background 0.1s;user-select:none}
+.sc-btn:hover{background:var(--bg4)}
+.sc-btn.active{border-color:var(--accent);background:var(--accent-bg);color:var(--accent)}
+.sc-btn.tsukkomi{border-color:#7a5a2a;color:#c8922a;background:#2a1e0a}
+.sc-btn.tsukkomi.active{border-color:#e8a020;color:#e8a020;background:#3a2800}
+.sc-btn kbd{font-size:9px;font-family:monospace;background:var(--bg);border:1px solid var(--border);border-radius:2px;padding:0 3px;color:var(--text3)}
+.sc-btn.active kbd{border-color:var(--accent);color:var(--accent)}
+.sc-btn.tsukkomi kbd{border-color:#7a5a2a;color:#c8922a}
+.sc-btn.tsukkomi.active kbd{border-color:#e8a020;color:#e8a020}
+
+/* 現在の装飾 */
+#combo-bar{padding:4px 14px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0}
+#combo-bar span{color:var(--accent)}
+
+/* 行リスト */
+#row-list{flex:1;overflow-y:auto;padding:6px 10px}
+#row-list::-webkit-scrollbar{width:5px}
+#row-list::-webkit-scrollbar-track{background:var(--bg)}
+#row-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+.row-item{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:4px;border:1px solid transparent;margin-bottom:3px;cursor:pointer;transition:background 0.08s,border-color 0.08s}
+.row-item:hover{background:var(--bg2);border-color:var(--border)}
+.row-item.selected{border-color:var(--accent);background:var(--accent-bg)}
+.row-item.warn{border-color:var(--warn)!important}
+.row-item.warn.selected{background:var(--warn-bg)}
+.row-item.editing{border-color:var(--border2)!important;background:var(--bg2)!important;cursor:default}
+.row-num{font-size:11px;color:var(--text3);font-family:monospace;min-width:22px;padding-top:2px;flex-shrink:0}
+.row-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.row-text{font-size:13px;color:var(--text);word-break:break-all;line-height:1.5}
+.row-item.selected .row-text{color:#fff}
+.row-item.warn .row-text{color:var(--warn)}
+.row-edit-ta{width:100%;background:var(--bg);border:1px solid var(--accent);border-radius:3px;color:var(--text);font-size:13px;font-family:inherit;padding:4px 7px;resize:none;line-height:1.5;min-height:28px}
+.row-edit-ta:focus{outline:none}
+.row-edit-hint{font-size:10px;color:var(--text3);margin-top:2px}
+.row-badges{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
+.badge{font-size:11px;padding:1px 6px;border-radius:3px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);white-space:nowrap}
+.row-item.selected .badge{border-color:var(--accent);color:var(--accent);background:var(--bg)}
+.row-item.warn .badge{border-color:var(--warn);color:var(--warn);background:var(--warn-bg)}
+.badge-auto{border-color:#4a7a4a!important;color:#7ec87e!important;background:#1a2e1a!important}
+.warn-msg{font-size:11px;color:var(--warn);margin-top:2px}
+.row-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;padding:0 2px;flex-shrink:0;margin-top:2px}
+.row-del:hover{color:var(--danger)}
+.no-rows{font-size:12px;color:var(--text3);padding:2rem;text-align:center}
+
+/* 入力エリア */
+#input-area{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+#telop-input{flex:1;height:52px;padding:7px 10px;font-size:13px;font-family:inherit;border-radius:4px;border:1px solid var(--border2);background:var(--bg);color:var(--text);resize:none;line-height:1.5}
+#telop-input:focus{outline:none;border-color:var(--accent)}
+#add-btn{padding:0 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;color:var(--text2);cursor:pointer;font-size:12px;font-family:inherit;white-space:nowrap}
+#add-btn:hover{background:var(--bg4);color:var(--text)}
+
+/* フッター */
+#footer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 12px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+#hint{font-size:11px;color:var(--text3)}
+#footer-right{display:flex;align-items:center;gap:8px}
+#panel-status{font-size:11px;color:var(--green)}
+#reset-btn{padding:4px 10px;background:var(--bg3);border:1px solid var(--danger);border-radius:3px;color:var(--danger);cursor:pointer;font-size:11px;font-family:inherit}
+#reset-btn:hover{background:#3a1a1a}
+#csv-btn{display:flex;align-items:center;gap:5px;padding:6px 14px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;color:var(--text);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500}
+#csv-btn:hover{background:var(--bg4);border-color:var(--accent);color:var(--accent)}
+#csv-btn:active{transform:scale(0.97)}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <span id="header-title">テロップ入力ツール</span>
+  <span id="stats">0 件</span>
+</div>
+
+<div id="sc-bar"></div>
+<div id="combo-bar">装飾: <span id="combo-display">なし</span> &nbsp;·&nbsp; Ctrl+ショートカットで追加/解除</div>
+
+<div id="row-list"><div class="no-rows">テロップを入力して追加してください</div></div>
+
+<div id="input-area">
+  <textarea id="telop-input" placeholder="テロップを入力… Enter で追加、Shift+Enter で改行"></textarea>
+  <button id="add-btn">追加<br>↵</button>
+</div>
+
+<div id="footer">
+  <span id="hint">ダブルクリックで編集 · ↑↓で行移動</span>
+  <div id="footer-right">
+    <span id="panel-status"></span>
+    <button id="reset-btn">リセット</button>
+    <button id="csv-btn">▼ CSVを保存</button>
+  </div>
+</div>
+
+<script>
+const DECS = [
+  {key:'1',action:'通常'},
+  {key:'2',action:'青テロップ'},
+  {key:'3',action:'黒文字'},
+  {key:'4',action:'黒でか'},
+  {key:'5',action:'黄文字'},
+  {key:'6',action:'黄でかB'},
+  {key:'7',action:'光彩文字オレンジ'},
+  {key:'8',action:'光彩文字ブルー'},
+  {key:'9',action:'黒紫'},
+  {key:'0',action:'白でか'},
+  {key:'q',action:'ゆる文字'},
+  {key:'w',action:'ゴージャス'},
+  {key:'e',action:'吹き出し'},
+  {key:'r',action:'えれがんと'},
+  {key:'t',action:'ツッコミ赤黒'},
+  {key:'y',action:'ツッコミ青黒'},
+  {key:'u',action:'金文字'},
+  {key:'i',action:'BK左右'},
+  {key:'o',action:'黄テロップ'},
+  {key:'p',action:'赤テロップ'},
+  {key:'a',action:'緑テロップ'},
+  {key:'s',action:'紫テロップ'},
+  {key:'d',action:'ツッコミ拡散'},
+  {key:'f',action:'光彩文字ピンク'},
+  {key:'g',action:'筆文字'},
+  {key:'h',action:'黒煽り'},
+  {key:'j',action:'水ダウ煽り'},
+  {key:'k',action:'BK上下'},
+  {key:'l',action:'レゲエ'},
+  {key:'z',action:'ニューロダン'},
+  {key:'x',action:'ユールカ'},
+  {key:'c',action:'スタッフ'},
+  {key:'v',action:'文字でかく'},
+  {key:'b',action:'フレピ'},
+  {key:'n',action:'フレ水'},
+  {key:'m',action:'黄でかテクスチャ'},
+  {key:null,action:'水でか'},
+  {key:null,action:'白文字光彩小'},
+  {key:null,action:'ラグラン'},
+  {key:null,action:'くろかね'},
+  {key:null,action:'シモカワゆる文字'},
+  {key:null,action:'アイコン'},
+  {key:null,action:'マティスV'},
+  {key:null,action:'t普通'},
+  {key:null,action:'t短い'},
+  {key:null,action:'t長い'},
+  {key:null,action:'t最長'},
+  {key:null,action:'tその他'},
+  {key:null,action:'TBアナウンス'},
+  {key:null,action:'Sシャドウ'},
+  {key:null,action:'S立体'},
+  {key:null,action:'B長方形'},
+  {key:null,action:'TB説明A'},
+];
+
+const TSUKKOMI_ACTIONS = ['t普通','t短い','t長い','t最長','tその他','TBアナウンス','Sシャドウ','S立体','B長方形','TB説明A'];
+const MAX_CHARS = 16;
+const STORAGE_KEY = 'telop_rows';
+
+let rows = [];
+let selectedIdx = null;
+let editingIdx = null;
+
+const scBar        = document.getElementById('sc-bar');
+const rowList      = document.getElementById('row-list');
+const statsEl      = document.getElementById('stats');
+const comboDisplay = document.getElementById('combo-display');
+const mainInput    = document.getElementById('telop-input');
+
+function buildScBar() {
+  scBar.innerHTML = '';
+  DECS.forEach(d => {
+    const btn = document.createElement('button');
+    btn.className = 'sc-btn' + (TSUKKOMI_ACTIONS.includes(d.action) ? ' tsukkomi' : '');
+    btn.dataset.action = d.action;
+    btn.innerHTML = d.key
+      ? '<kbd>C+' + d.key.toUpperCase() + '</kbd>' + d.action
+      : d.action;
+    btn.title = d.key ? 'Ctrl+' + d.key.toUpperCase() + ': ' + d.action : d.action;
+    btn.addEventListener('mousedown', e => { e.preventDefault(); toggleDec(d); });
+    scBar.appendChild(btn);
+  });
+}
+
+function toggleDec(d) {
+  if (selectedIdx === null || editingIdx !== null) return;
+  const row = rows[selectedIdx];
+  if (!row.actions) row.actions = ['通常'];
+  if (d.action === '通常') {
+    row.actions = ['通常'];
+  } else {
+    const has = row.actions.includes(d.action);
+    if (has) {
+      row.actions = row.actions.filter(a => a !== d.action);
+      if (!row.actions.length) row.actions = ['通常'];
+    } else {
+      row.actions = row.actions.filter(a => a !== '通常');
+      row.actions.push(d.action);
+    }
+  }
+  render(); saveRows();
+}
+
+function buildAction(row) {
+  const actions = row.actions && row.actions.length ? row.actions : ['通常'];
+  const parts = actions.slice();
+  if (row.title && row.title.includes('\n')) parts.push('改行');
+  return parts.join('+');
+}
+
+function isOver(title) {
+  return title.split('\n').some(l => [...l].length > MAX_CHARS);
+}
+
+function startEdit(idx) {
+  editingIdx = idx; selectedIdx = idx;
+  render();
+  const ta = document.getElementById('edit-ta-' + idx);
+  if (ta) { ta.focus(); const len = ta.value.length; ta.setSelectionRange(len, len); }
+}
+
+function commitEdit(idx, val) {
+  if (val.trim()) rows[idx].title = val;
+  editingIdx = null;
+  render(); saveRows(); mainInput.focus();
+}
+
+function render() {
+  statsEl.textContent = rows.length + ' 件';
+  comboDisplay.textContent = (selectedIdx !== null && rows[selectedIdx])
+    ? (rows[selectedIdx].actions || ['通常']).join('+') : 'なし';
+
+  if (!rows.length) {
+    rowList.innerHTML = '<div class="no-rows">テロップを入力して追加してください</div>';
+    updateScBtns([]); return;
+  }
+
+  rowList.innerHTML = '';
+  rows.forEach((r, i) => {
+    const over    = isOver(r.title);
+    const isSel   = i === selectedIdx;
+    const isEdit  = i === editingIdx;
+    const actions = r.actions && r.actions.length ? r.actions : ['通常'];
+    const hasNL   = r.title && r.title.includes('\n');
+
+    const div = document.createElement('div');
+    div.className = 'row-item'
+      + (isEdit ? ' editing' : isSel ? ' selected' : '')
+      + (over && !isEdit ? ' warn' : '');
+
+    let badgesHtml = actions.map(a => '<span class="badge">' + a + '</span>').join('');
+    if (hasNL && !isEdit) badgesHtml += '<span class="badge badge-auto">改行 ↵</span>';
+
+    const warnHtml = (over && !isEdit)
+      ? '<div class="warn-msg">⚠ 既定の幅を超過しています。文章を整形してください</div>' : '';
+
+    let bodyHtml;
+    if (isEdit) {
+      const esc = r.title.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      bodyHtml = '<div class="row-body"><textarea id="edit-ta-' + i + '" class="row-edit-ta" rows="2">' + esc + '</textarea>'
+        + '<div class="row-edit-hint">Enter: 確定 &nbsp; Shift+Enter: 改行 &nbsp; Esc: キャンセル</div>'
+        + '<div class="row-badges">' + badgesHtml + '</div></div>';
+    } else {
+      const disp = r.title.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,' ↵ ');
+      bodyHtml = '<div class="row-body"><div class="row-text">' + disp + '</div>'
+        + '<div class="row-badges">' + badgesHtml + '</div>' + warnHtml + '</div>';
+    }
+
+    div.innerHTML = '<span class="row-num">' + (i+1) + '</span>' + bodyHtml
+      + '<button class="row-del" title="削除">✕</button>';
+
+    div.querySelector('.row-del').addEventListener('click', e => {
+      e.stopPropagation();
+      if (editingIdx === i) editingIdx = null;
+      rows.splice(i, 1);
+      if (selectedIdx >= rows.length) selectedIdx = rows.length > 0 ? rows.length - 1 : null;
+      render(); saveRows();
+    });
+
+    if (isEdit) {
+      const ta = div.querySelector('textarea');
+      ta.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); commitEdit(i, ta.value); }
+        if (e.key === 'Escape') { editingIdx = null; render(); mainInput.focus(); }
+        e.stopPropagation();
+      });
+      ta.addEventListener('click', e => e.stopPropagation());
+    } else {
+      div.addEventListener('click',    () => { selectedIdx = i; render(); mainInput.focus(); });
+      div.addEventListener('dblclick', () => startEdit(i));
+    }
+    rowList.appendChild(div);
+  });
+
+  if (editingIdx !== null) {
+    const ta = document.getElementById('edit-ta-' + editingIdx);
+    if (ta) ta.focus();
+  } else if (selectedIdx !== null) {
+    rowList.querySelectorAll('.row-item')[selectedIdx]?.scrollIntoView({ block: 'nearest' });
+    updateScBtns(rows[selectedIdx].actions || ['通常']);
+  } else { updateScBtns([]); }
+}
+
+function updateScBtns(actions) {
+  document.querySelectorAll('.sc-btn').forEach(btn => {
+    btn.classList.toggle('active', actions.includes(btn.dataset.action));
+  });
+}
+
+function addRow() {
+  const val = mainInput.value;
+  if (!val.trim()) return;
+  const newRow = { title: val, actions: ['通常'] };
+  if (selectedIdx !== null && selectedIdx < rows.length) {
+    rows.splice(selectedIdx + 1, 0, newRow);
+    selectedIdx++;
+  } else {
+    rows.push(newRow);
+    selectedIdx = rows.length - 1;
+  }
+  mainInput.value = ''; render(); saveRows();
+}
+
+mainInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); addRow(); return; }
+  if (e.key === 'ArrowUp'   && selectedIdx > 0)               { e.preventDefault(); selectedIdx--; render(); return; }
+  if (e.key === 'ArrowDown' && selectedIdx < rows.length - 1) { e.preventDefault(); selectedIdx++; render(); return; }
+});
+
+document.addEventListener('keydown', e => {
+  if (editingIdx !== null) return;
+  if (!e.ctrlKey && !e.metaKey) return;
+  const d = DECS.find(d => d.key === e.key.toLowerCase());
+  if (d && selectedIdx !== null) { e.preventDefault(); toggleDec(d); }
+});
+
+document.getElementById('add-btn').addEventListener('click', addRow);
+
+function saveRows() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rows)); } catch(e) {}
+}
+function loadRows() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (s) { rows = JSON.parse(s); selectedIdx = rows.length > 0 ? rows.length - 1 : null; }
+  } catch(e) {}
+}
+function setStatus(msg) {
+  const el = document.getElementById('panel-status');
+  if (el) el.textContent = msg;
+}
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  if (!rows.length) return;
+  if (!confirm('全件削除します。よろしいですか？')) return;
+  rows = []; selectedIdx = null; editingIdx = null;
+  saveRows(); render();
+  setStatus('リセットしました');
+  setTimeout(() => setStatus(''), 2000);
+});
+
+document.getElementById('csv-btn').addEventListener('click', () => {
+  if (!rows.length) { alert('テロップがありません'); return; }
+  let csv = 'number,title,action\n';
+  rows.forEach((r, i) => {
+    const action = buildAction(r);
+    const t = r.title;
+    const title = (t.includes(',') || t.includes('\n') || t.includes('"'))
+      ? '"' + t.replace(/"/g, '""') + '"' : t;
+    csv += (i + 1) + ',' + title + ',' + action + '\n';
+  });
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'テロップ.csv'; a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+buildScBar(); loadRows(); render(); mainInput.focus();
+</script>
+</body>
+</html>
