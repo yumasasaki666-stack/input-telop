@@ -193,7 +193,7 @@ function buildScBar() {
     const btn = document.createElement('button');
     btn.className = 'sc-btn' + (TSUKKOMI_ACTIONS.includes(d.action) ? ' tsukkomi' : '');
     btn.dataset.action = d.action;
-    var keyLabel = d.key && d.key === d.key.toUpperCase() && d.key.length === 1 ? 'C+S+' + d.key : d.key ? 'C+' + d.key.toUpperCase() : '';
+    var keyLabel = d.key && /^[A-Z]$/.test(d.key) ? 'C+S+' + d.key : d.key ? 'C+' + d.key.toUpperCase() : '';
   btn.innerHTML = keyLabel ? '<kbd>' + keyLabel + '</kbd>' + d.action : d.action;
     btn.title = d.key ? 'Ctrl+' + d.key.toUpperCase() + ': ' + d.action : d.action;
     btn.addEventListener('mousedown', e => { e.preventDefault(); toggleDec(d); });
