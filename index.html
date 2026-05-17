@@ -223,7 +223,8 @@ function toggleDec(d) {
 function buildAction(row) {
   const actions = row.actions && row.actions.length ? row.actions : ['通常'];
   const parts = actions.slice();
-  if (row.title && row.title.includes('\n')) parts.push('改行');
+  const isTsukkomi = actions.some(a => TSUKKOMI_ACTIONS.includes(a));
+  if (!isTsukkomi && row.title && row.title.includes('\n')) parts.push('改行');
   return parts.join('+');
 }
 
@@ -261,6 +262,7 @@ function render() {
     const isEdit  = i === editingIdx;
     const actions = r.actions && r.actions.length ? r.actions : ['通常'];
     const hasNL   = r.title && r.title.includes('\n');
+    const isTsukkomi = actions.some(a => TSUKKOMI_ACTIONS.includes(a));
 
     const div = document.createElement('div');
     div.className = 'row-item'
@@ -268,7 +270,7 @@ function render() {
       + (over && !isEdit ? ' warn' : '');
 
     let badgesHtml = actions.map(a => '<span class="badge">' + a + '</span>').join('');
-    if (hasNL && !isEdit) badgesHtml += '<span class="badge badge-auto">改行 ↵</span>';
+    if (hasNL && !isEdit && !isTsukkomi) badgesHtml += '<span class="badge badge-auto">改行 ↵</span>';
 
     const warnHtml = (over && !isEdit)
       ? '<div class="warn-msg">⚠ 既定の幅を超過しています。文章を整形してください</div>' : '';
