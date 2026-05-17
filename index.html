@@ -27,7 +27,7 @@ body{display:flex;flex-direction:column;overflow:hidden}
 #header-title{font-size:14px;font-weight:600;color:var(--text)}
 #stats{font-size:12px;color:var(--text3)}
 
-#sc-bar{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+#sc-bar{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0}
 .sc-btn{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:12px;font-family:inherit;transition:all 0.1s;user-select:none}
 .sc-btn:hover{background:var(--bg4);border-color:var(--border2)}
 .sc-btn.active{border-color:var(--accent);background:var(--accent-bg);color:var(--accent);font-weight:500}
@@ -97,8 +97,7 @@ body{display:flex;flex-direction:column;overflow:hidden}
   <span id="stats">0 件</span>
 </div>
 
-<div id="sc-bar"></div>
-<div id="combo-bar">装飾: <span id="combo-display">なし</span> &nbsp;·&nbsp; Ctrl+ショートカットで追加/解除</div>
+<div id="combo-bar">装飾: <span id="combo-display">なし</span> &nbsp;·&nbsp; Ctrl+Alt+ショートカットで追加/解除</div>
 
 <div id="row-list"><div class="no-rows">テロップを入力して追加してください</div></div>
 
@@ -106,6 +105,8 @@ body{display:flex;flex-direction:column;overflow:hidden}
   <textarea id="telop-input" placeholder="テロップを入力… Enter で追加、Shift+Enter で改行"></textarea>
   <button id="add-btn">追加<br>↵</button>
 </div>
+
+<div id="sc-bar"></div>
 
 <div id="footer">
   <span id="hint">ダブルクリックで編集 · ↑↓で行移動</span>
@@ -128,32 +129,32 @@ const DECS = [
   {key:'8',action:'光彩文字ブルー'},
   {key:'9',action:'黒紫'},
   {key:'0',action:'白でか'},
-  {key:'O',action:'ゆる文字'},
-  {key:'A',action:'ゴージャス'},
-  {key:'e',action:'吹き出し'},
-  {key:'E',action:'えれがんと'},
-  {key:'Y',action:'ツッコミ赤黒'},
-  {key:'y',action:'ツッコミ青黒'},
-  {key:'U',action:'金文字'},
-  {key:'i',action:'BK左右'},
-  {key:'o',action:'黄テロップ'},
-  {key:'P',action:'赤テロップ'},
-  {key:'a',action:'緑テロップ'},
-  {key:'S',action:'紫テロップ'},
-  {key:'d',action:'ツッコミ拡散'},
-  {key:'H',action:'光彩文字ピンク'},
-  {key:'F',action:'筆文字'},
-  {key:'h',action:'黒煽り'},
-  {key:'j',action:'水ダウ煽り'},
-  {key:'k',action:'BK上下'},
-  {key:'L',action:'レゲエ'},
-  {key:'K',action:'ニューロダン'},
-  {key:'X',action:'ユールカ'},
-  {key:'C',action:'スタッフ'},
-  {key:'V',action:'文字でかく'},
-  {key:'b',action:'フレピ'},
-  {key:'D',action:'フレ水'},
-  {key:'m',action:'黄でかテクスチャ'},
+  {key:'a',action:'ゆる文字'},
+  {key:'b',action:'ゴージャス'},
+  {key:'c',action:'吹き出し'},
+  {key:'d',action:'えれがんと'},
+  {key:'e',action:'ツッコミ赤黒'},
+  {key:'f',action:'ツッコミ青黒'},
+  {key:'g',action:'金文字'},
+  {key:'h',action:'BK左右'},
+  {key:'i',action:'黄テロップ'},
+  {key:'j',action:'赤テロップ'},
+  {key:'k',action:'緑テロップ'},
+  {key:'l',action:'紫テロップ'},
+  {key:'m',action:'ツッコミ拡散'},
+  {key:'n',action:'光彩文字ピンク'},
+  {key:'o',action:'筆文字'},
+  {key:'p',action:'黒煽り'},
+  {key:'q',action:'水ダウ煽り'},
+  {key:'r',action:'BK上下'},
+  {key:'s',action:'レゲエ'},
+  {key:'t',action:'ニューロダン'},
+  {key:'u',action:'ユールカ'},
+  {key:'v',action:'スタッフ'},
+  {key:'w',action:'文字でかく'},
+  {key:'x',action:'フレピ'},
+  {key:'y',action:'フレ水'},
+  {key:'z',action:'黄でかテクスチャ'},
   {key:null,action:'水でか'},
   {key:null,action:'白文字光彩小'},
   {key:null,action:'ラグラン'},
@@ -193,7 +194,7 @@ function buildScBar() {
     const btn = document.createElement('button');
     btn.className = 'sc-btn' + (TSUKKOMI_ACTIONS.includes(d.action) ? ' tsukkomi' : '');
     btn.dataset.action = d.action;
-    var keyLabel = d.key && /^[A-Z]$/.test(d.key) ? 'C+S+' + d.key : d.key ? 'C+' + d.key.toUpperCase() : '';
+    var keyLabel = d.key && /^[a-z]$/.test(d.key) ? 'C+A+' + d.key.toUpperCase() : d.key && /^[0-9]$/.test(d.key) ? 'C+' + d.key : '';
   btn.innerHTML = keyLabel ? '<kbd>' + keyLabel + '</kbd>' + d.action : d.action;
     btn.title = d.key ? 'Ctrl+' + d.key.toUpperCase() + ': ' + d.action : d.action;
     btn.addEventListener('mousedown', e => { e.preventDefault(); toggleDec(d); });
@@ -350,10 +351,17 @@ mainInput.addEventListener('keydown', e => {
 
 document.addEventListener('keydown', e => {
   if (editingIdx !== null) return;
-  if (!e.ctrlKey && !e.metaKey) return;
-  const k = e.shiftKey ? e.key.toUpperCase() : e.key.toLowerCase();
-  const d = DECS.find(d => d.key === k);
-  if (d && selectedIdx !== null) { e.preventDefault(); toggleDec(d); }
+  // 数字キー: Ctrl+数字
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && /^[0-9]$/.test(e.key)) {
+    const d = DECS.find(d => d.key === e.key);
+    if (d && selectedIdx !== null) { e.preventDefault(); toggleDec(d); }
+    return;
+  }
+  // 英字キー: Ctrl+Alt+英字
+  if ((e.ctrlKey || e.metaKey) && e.altKey && /^[a-zA-Z]$/.test(e.key)) {
+    const d = DECS.find(d => d.key === e.key.toLowerCase());
+    if (d && selectedIdx !== null) { e.preventDefault(); toggleDec(d); }
+  }
 });
 
 document.getElementById('add-btn').addEventListener('click', addRow);
