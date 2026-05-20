@@ -199,21 +199,21 @@ const DECS = [
   {key:'x',action:'フレピ'},
   {key:'y',action:'フレ水'},
   {key:'z',action:'黄でかテクスチャ'},
-  {key:null,action:'水でか'},
-  {key:null,action:'白文字光彩小'},
-  {key:null,action:'ラグラン'},
-  {key:null,action:'くろかね'},
-      {key:null,action:'マティスV'},
-  {key:null,action:'t普通'},
-  {key:null,action:'t短い'},
-  {key:null,action:'t長い'},
-  {key:null,action:'t最長'},
-  {key:null,action:'tその他'},
-  {key:null,action:'TBアナウンス'},
-  {key:null,action:'Sシャドウ'},
-  {key:null,action:'S立体'},
-  {key:null,action:'B長方形'},
-  {key:null,action:'TB説明A'},
+  {key:',',action:'水でか'},
+  {key:'.',action:'白文字光彩小'},
+  {key:';',action:'ラグラン'},
+  {key:'/',action:'くろかね'},
+      {key:'[',action:'マティスV'},
+  {key:']',action:'t普通'},
+  {key:'\\',action:'t短い'},
+  {key:'-',action:'t長い'},
+  {key:'=',action:'t最長'},
+  {key:'`',action:'tその他'},
+  {key:'<',action:'TBアナウンス'},
+  {key:'>',action:'Sシャドウ'},
+  {key:':',action:'S立体'},
+  {key:'?',action:'B長方形'},
+  {key:'{',action:'TB説明A'},
 ];
 
 const TSUKKOMI_ACTIONS = ['t普通','t短い','t長い','t最長','tその他','TBアナウンス','Sシャドウ','S立体','B長方形','TB説明A'];
@@ -236,7 +236,12 @@ function buildScBar() {
     const btn = document.createElement('button');
     btn.className = 'sc-btn' + (TSUKKOMI_ACTIONS.includes(d.action) ? ' tsukkomi' : '');
     btn.dataset.action = d.action;
-    var keyLabel = d.key && /^[a-z]$/.test(d.key) ? 'C+A+' + d.key.toUpperCase() : d.key && /^[0-9]$/.test(d.key) ? 'C+' + d.key : '';
+    var shiftSymbols = {'<':',','>':'.', ':':';','?':'/','{':'['};
+    var isShiftSymbol = shiftSymbols.hasOwnProperty(d.key);
+    var keyLabel = d.key && /^[a-z]$/.test(d.key) ? 'C+A+' + d.key.toUpperCase()
+      : d.key && /^[0-9]$/.test(d.key) ? 'C+' + d.key
+      : isShiftSymbol ? 'C+S+' + shiftSymbols[d.key]
+      : d.key ? 'C+A+' + d.key : '';
   btn.innerHTML = keyLabel ? '<kbd>' + keyLabel + '</kbd>' + d.action : d.action;
     btn.title = d.key ? 'Ctrl+' + d.key.toUpperCase() + ': ' + d.action : d.action;
     btn.addEventListener('mousedown', e => { e.preventDefault(); toggleDec(d); });
@@ -413,6 +418,25 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.altKey && /^[a-zA-Z]$/.test(e.key)) {
     const d = DECS.find(d => d.key === e.key.toLowerCase());
     if (d && selectedIdx !== null) { e.preventDefault(); toggleDec(d); }
+    return;
+  }
+  // 記号キー: Ctrl+Alt+記号
+  if ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey) {
+    const d = DECS.find(d => d.key === e.key);
+    if (d && selectedIdx !== null) { e.preventDefault(); toggleDec(d); }
+    return;
+  }
+  // 記号キー: Ctrl+Shift+記号（shiftで変化するキーをそのまま使う）
+  // ,→< .→> ;→: /→? [→{ の対応
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+    const shiftSymbolMap = {'<':',', '>':'.', ':':';', '?':'/', '{':'['};
+    const baseKey = shiftSymbolMap[e.key] || e.key;
+    // まず変換後のキーで検索（Ctrl+Shift+記号）
+    const d = DECS.find(d => d.key === baseKey && baseKey !== baseKey.toLowerCase());
+    // TBアナウンスなど < > : ? { に割り当てたものを検索
+    const d2 = DECS.find(d => d.key === e.key);
+    const target = d || d2;
+    if (target && selectedIdx !== null) { e.preventDefault(); toggleDec(target); }
   }
 });
 
