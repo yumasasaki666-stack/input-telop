@@ -124,6 +124,44 @@ body{display:flex;flex-direction:column;overflow:hidden}
 </div>
 
 <script>
+
+// ---- Undo/Redo履歴管理 ----
+const HISTORY_MAX = 50;
+let history = [];
+let historyIdx = -1;
+
+function pushHistory() {
+  // 現在の状態をディープコピーして履歴に追加
+  const state = JSON.parse(JSON.stringify({ rows, selectedIdx }));
+  // 現在位置より先の履歴を削除
+  history = history.slice(0, historyIdx + 1);
+  history.push(state);
+  if (history.length > HISTORY_MAX) history.shift();
+  historyIdx = history.length - 1;
+}
+
+function undo() {
+  if (historyIdx <= 0) return;
+  historyIdx--;
+  const state = JSON.parse(JSON.stringify(history[historyIdx]));
+  rows = state.rows;
+  selectedIdx = state.selectedIdx;
+  editingIdx = null;
+  render();
+  saveRows();
+}
+
+function redo() {
+  if (historyIdx >= history.length - 1) return;
+  historyIdx++;
+  const state = JSON.parse(JSON.stringify(history[historyIdx]));
+  rows = state.rows;
+  selectedIdx = state.selectedIdx;
+  editingIdx = null;
+  render();
+  saveRows();
+}
+
 const DECS = [
   {key:'1',action:'通常'},
   {key:'2',action:'青テロップ'},
@@ -222,7 +260,7 @@ function toggleDec(d) {
       row.actions.push(d.action);
     }
   }
-  render(); saveRows();
+  pushHistory(); render(); saveRows();
 }
 
 function buildAction(row) {
@@ -247,7 +285,7 @@ function startEdit(idx) {
 function commitEdit(idx, val) {
   if (val.trim()) rows[idx].title = val;
   editingIdx = null;
-  render(); saveRows(); mainInput.focus();
+  pushHistory(); render(); saveRows(); mainInput.focus();
 }
 
 function render() {
@@ -300,7 +338,7 @@ function render() {
       if (editingIdx === i) editingIdx = null;
       rows.splice(i, 1);
       if (selectedIdx >= rows.length) selectedIdx = rows.length > 0 ? rows.length - 1 : null;
-      render(); saveRows();
+      pushHistory(); render(); saveRows();
     });
 
     if (isEdit) {
@@ -344,18 +382,27 @@ function addRow() {
     rows.push(newRow);
     selectedIdx = rows.length - 1;
   }
-  mainInput.value = ''; render(); saveRows();
+  mainInput.value = ''; pushHistory(); render(); saveRows();
 }
 
 mainInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); addRow(); return; }
   if (e.key === 'Enter' && e.ctrlKey && !e.isComposing) { e.preventDefault(); return; }
-  if (e.key === 'ArrowUp'   && selectedIdx > 0)               { e.preventDefault(); selectedIdx--; render(); return; }
-  if (e.key === 'ArrowDown' && selectedIdx < rows.length - 1) { e.preventDefault(); selectedIdx++; render(); return; }
+
 });
 
 document.addEventListener('keydown', e => {
   if (editingIdx !== null) return;
+  // Undo: Ctrl+Z
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+    const active = document.activeElement;
+    if (!active || active.tagName !== 'TEXTAREA') { e.preventDefault(); undo(); return; }
+  }
+  // Redo: Ctrl+Shift+Z
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.shiftKey && e.key.toLowerCase() === 'z') {
+    const active = document.activeElement;
+    if (!active || active.tagName !== 'TEXTAREA') { e.preventDefault(); redo(); return; }
+  }
   // 数字キー: Ctrl+数字
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && /^[0-9]$/.test(e.key)) {
     const d = DECS.find(d => d.key === e.key);
@@ -500,6 +547,7 @@ document.getElementById('csv-btn').addEventListener('click', () => {
 });
 
 buildScBar(); render(); mainInput.focus();
+pushHistory(); // 初期状態を履歴に
 // ---- ガイドライン描画 ----
 (function() {
   var canvas = document.getElementById('guide-canvas');
@@ -539,7 +587,7 @@ buildScBar(); render(); mainInput.focus();
   setTimeout(drawGuide, 300);
 })();
 
-loadProjects().then(() => loadRows()).then(() => render());
+loadProjects().then(() => loadRows()).then(() => { render(); history = []; historyIdx = -1; pushHistory(); });
 </script>
 </body>
 </html>
