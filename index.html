@@ -72,6 +72,14 @@ body{display:flex;flex-direction:column;overflow:hidden}
 #input-wrap{flex:1;position:relative}
 #input-wrap #telop-input{width:100%;flex:none}
 #guide-canvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;border-radius:8px}
+#color-picker-bar{display:none;flex-wrap:wrap;gap:4px;padding:6px 10px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;align-items:center}
+#color-picker-bar.visible{display:flex}
+.cp-swatch{width:20px;height:20px;border-radius:3px;border:1px solid var(--border2);cursor:pointer;flex-shrink:0;transition:transform 0.1s}
+.cp-swatch:hover{transform:scale(1.2)}
+.cp-clear{padding:2px 8px;font-size:11px;border-radius:3px;border:1px solid var(--border2);background:var(--bg3);color:var(--danger);cursor:pointer;font-family:inherit}
+.cp-clear:hover{background:#3a1a1a}
+.cp-hint{font-size:11px;color:var(--text3);flex:1}
+.color-range-badge{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:2px;vertical-align:middle}
 #telop-input{flex:1;height:54px;padding:8px 11px;font-size:13px;font-family:"MS Gothic","Courier New",monospace;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--text);resize:none;line-height:1.5;letter-spacing:0}
 #telop-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,113,227,0.12);background:var(--bg2)}
 #add-btn{padding:0 14px;background:var(--accent);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:12px;font-family:inherit;white-space:nowrap;font-weight:500}
@@ -112,6 +120,10 @@ body{display:flex;flex-direction:column;overflow:hidden}
   <button id="add-btn">追加<br>↵</button>
 </div>
 
+<div id="color-picker-bar">
+  <span class="cp-hint">テキストを選択して色をクリック</span>
+  <button class="cp-clear" id="cp-clear-btn">範囲クリア</button>
+</div>
 <div id="sc-bar"></div>
 
 <div id="footer">
@@ -318,6 +330,9 @@ function render() {
       + (over && !isEdit ? ' warn' : '');
 
     let badgesHtml = actions.map(a => '<span class="badge">' + a + '</span>').join('');
+    if (r.colorRanges && r.colorRanges.length > 0 && !isEdit) {
+      badgesHtml += r.colorRanges.map(cr => '<span class="badge"><span class="color-range-badge" style="background:' + cr.color + '"></span>' + cr.start + '-' + cr.end + '</span>').join('');
+    }
     if (hasNL && !isEdit && !isTsukkomi) badgesHtml += '<span class="badge badge-auto">改行 ↵</span>';
 
     const warnHtml = (over && !isEdit)
@@ -330,7 +345,26 @@ function render() {
         + '<div class="row-edit-hint">Enter: 確定 &nbsp; Shift+Enter: 改行 &nbsp; Esc: キャンセル</div>'
         + '<div class="row-badges">' + badgesHtml + '</div></div>';
     } else {
-      const disp = r.title.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,' ↵ ');
+      // カラーレンジをHTMLに反映
+      function buildColoredText(title, colorRanges) {
+        if (!colorRanges || !colorRanges.length) {
+          return title.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,' ↵ ');
+        }
+        // 文字配列に分解して色を適用
+        const chars = [...title];
+        let html = '';
+        for (let ci = 0; ci < chars.length; ci++) {
+          const ch = chars[ci] === '\n' ? ' ↵ ' : chars[ci].replace(/&/g,'&amp;').replace(/</g,'&lt;');
+          const cr = colorRanges.find(r => ci >= r.start && ci < r.end);
+          if (cr) {
+            html += '<span style="color:' + cr.color + '">' + ch + '</span>';
+          } else {
+            html += ch;
+          }
+        }
+        return html;
+      }
+      const disp = buildColoredText(r.title, r.colorRanges);
       bodyHtml = '<div class="row-body"><div class="row-text">' + disp + '</div>'
         + '<div class="row-badges">' + badgesHtml + '</div>' + warnHtml + '</div>';
     }
@@ -361,6 +395,7 @@ function render() {
     rowList.appendChild(div);
   });
 
+  updateColorPickerBar();
   if (editingIdx !== null) {
     const ta = document.getElementById('edit-ta-' + editingIdx);
     if (ta) ta.focus();
@@ -556,19 +591,92 @@ document.getElementById('reset-btn').addEventListener('click', () => {
 
 document.getElementById('csv-btn').addEventListener('click', () => {
   if (!rows.length) { alert('テロップがありません'); return; }
-  let csv = 'number,title,action\n';
+  let csv = 'number,title,action,color_range\n';
   rows.forEach((r, i) => {
     const action = buildAction(r);
     const t = r.title;
     const title = (t.includes(',') || t.includes('\n') || t.includes('"'))
       ? '"' + t.replace(/"/g, '""') + '"' : t;
-    csv += (i + 1) + ',' + title + ',' + action + '\n';
+    const colorRangeRaw = r.colorRanges && r.colorRanges.length
+      ? r.colorRanges.map(cr => cr.start + '-' + cr.end + ',' + cr.color).join(';')
+      : 'none';
+    // color_rangeはカンマを含むのでダブルクォートで囲む
+    const colorRange = colorRangeRaw !== 'none' ? '"' + colorRangeRaw + '"' : 'none';
+    csv += (i + 1) + ',' + title + ',' + action + ',' + colorRange + '\n';
   });
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = 'テロップ.csv'; a.click();
   URL.revokeObjectURL(a.href);
 });
+
+
+// ---- カラーレンジ機能 ----
+const PRESET_COLORS = [
+  '#FF3A80','#7DB3FF','#006AFF','#00A2FF','#F68216','#E23D22','#9900B1','#2544CF',
+  '#434343','#24AA30','#FF3332','#25DBDE','#C95DFF','#03F6E4','#FFED3E','#FFFFEB',
+  '#A10A0A','#131060','#9AD7FF','#E4EA1B','#E5150D','#FFFFFF'
+];
+
+function buildColorPickerBar() {
+  const bar = document.getElementById('color-picker-bar');
+  const hint = bar.querySelector('.cp-hint');
+  // スウォッチを追加
+  PRESET_COLORS.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'cp-swatch';
+    sw.style.background = c;
+    sw.title = c;
+    sw.addEventListener('click', () => applyColorRange(c));
+    bar.insertBefore(sw, hint);
+  });
+}
+
+function applyColorRange(color) {
+  if (editingIdx === null) return;
+  const ta = document.getElementById('edit-ta-' + editingIdx);
+  if (!ta) return;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  if (start === end) return; // 選択なし
+
+  const row = rows[editingIdx];
+  if (!row.colorRanges) row.colorRanges = [];
+
+  // 既存の重複範囲を除去して追加
+  row.colorRanges = row.colorRanges.filter(r => !(r.start < end && r.end > start));
+  row.colorRanges.push({ start, end, color });
+  row.colorRanges.sort((a, b) => a.start - b.start);
+
+  pushHistory(); saveRows(); render();
+  // 編集モードを維持
+  setTimeout(() => {
+    const ta2 = document.getElementById('edit-ta-' + editingIdx);
+    if (ta2) { ta2.focus(); ta2.setSelectionRange(start, end); }
+  }, 10);
+}
+
+document.getElementById('cp-clear-btn').addEventListener('click', () => {
+  if (editingIdx === null) return;
+  const row = rows[editingIdx];
+  row.colorRanges = [];
+  pushHistory(); saveRows(); render();
+  setTimeout(() => {
+    const ta = document.getElementById('edit-ta-' + editingIdx);
+    if (ta) ta.focus();
+  }, 10);
+});
+
+function updateColorPickerBar() {
+  const bar = document.getElementById('color-picker-bar');
+  if (editingIdx !== null) {
+    bar.classList.add('visible');
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
+buildColorPickerBar();
 
 buildScBar(); render(); mainInput.focus();
 pushHistory(); // 初期状態を履歴に
