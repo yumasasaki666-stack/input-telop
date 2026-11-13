@@ -90,6 +90,8 @@ body{display:flex;flex-direction:column;overflow:hidden}
 #hint{font-size:11px;color:var(--text3)}
 #footer-right{display:flex;align-items:center;gap:8px}
 #panel-status{font-size:11px;color:var(--green)}
+#panel-status[data-warning="true"]{color:var(--danger)}
+#retry-btn{padding:5px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--bg2);color:var(--accent);cursor:pointer;font:inherit;font-size:11px}
 #reset-btn{padding:5px 11px;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--danger);cursor:pointer;font-size:11px;font-family:inherit}
 #reset-btn:hover{background:#fff2f1;border-color:var(--danger)}
 #csv-btn{display:flex;align-items:center;gap:5px;padding:6px 16px;background:var(--green);border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:500}
@@ -129,7 +131,8 @@ body{display:flex;flex-direction:column;overflow:hidden}
 <div id="footer">
   <span id="hint">ダブルクリックで編集 · ↑↓で行移動</span>
   <div id="footer-right">
-    <span id="panel-status"></span>
+    <span id="panel-status" role="status"></span>
+    <button id="retry-btn" type="button" hidden>クラウド再試行</button>
     <button id="reset-btn">リセット</button>
     <button id="csv-btn">▼ CSVを保存</button>
   </div>
@@ -158,7 +161,7 @@ function undo() {
   const state = JSON.parse(JSON.stringify(history[historyIdx]));
   rows = state.rows;
   selectedIdx = state.selectedIdx;
-  editingIdx = null;
+  endEdit();
   render();
   saveRows();
 }
@@ -169,7 +172,7 @@ function redo() {
   const state = JSON.parse(JSON.stringify(history[historyIdx]));
   rows = state.rows;
   selectedIdx = state.selectedIdx;
-  editingIdx = null;
+  endEdit();
   render();
   saveRows();
 }
@@ -231,7 +234,7 @@ const DECS = [
 
 const TSUKKOMI_ACTIONS = ['t普通','t短い','t長い','t最長','tその他','TBアナウンス','Sシャドウ','S立体','B長方形','TB説明A'];
 const MAX_CHARS = 16;
-const STORAGE_KEY = 'telop_rows';
+const STORAGE_KEY = 'telop_autosave_v1:' + location.pathname + ':';
 
 let rows = [];
 let selectedIdx = null;
@@ -249,14 +252,16 @@ function buildScBar() {
     const btn = document.createElement('button');
     btn.className = 'sc-btn' + (TSUKKOMI_ACTIONS.includes(d.action) ? ' tsukkomi' : '');
     btn.dataset.action = d.action;
-    var shiftSymbols = {'<':',','>':'.', ':':';','?':'/','{':'['};
-    var isShiftSymbol = shiftSymbols.hasOwnProperty(d.key);
-    var keyLabel = d.key && /^[a-z]$/.test(d.key) ? 'C+A+' + d.key.toUpperCase()
-      : d.key && /^[0-9]$/.test(d.key) ? 'C+' + d.key
-      : isShiftSymbol ? 'C+S+' + shiftSymbols[d.key]
-      : d.key ? 'C+A+' + d.key : '';
-  btn.innerHTML = keyLabel ? '<kbd>' + keyLabel + '</kbd>' + d.action : d.action;
-    btn.title = d.key ? 'Ctrl+' + d.key.toUpperCase() + ': ' + d.action : d.action;
+    const shiftSymbols = {'<':',','>':'.','?':'/','{':'['};
+    const shortcut = !d.key ? '' : /^[0-9]$/.test(d.key) ? 'Ctrl+' + d.key
+      : shiftSymbols[d.key] ? 'Ctrl+Shift+' + shiftSymbols[d.key]
+      : 'Ctrl+Alt+' + d.key.toUpperCase();
+    const keyLabel = shortcut.replace('Ctrl+', 'C+').replace('Alt+', 'A+').replace('Shift+', 'S+');
+    const label = document.createElement('kbd');
+    label.textContent = keyLabel;
+    if (keyLabel) btn.appendChild(label);
+    btn.append(d.action);
+    btn.title = shortcut ? shortcut + ' · ' + d.action : d.action;
     btn.addEventListener('mousedown', e => { e.preventDefault(); toggleDec(d); });
     scBar.appendChild(btn);
   });
@@ -295,6 +300,8 @@ function isOver(title) {
 
 function startEdit(idx) {
   editingIdx = idx; selectedIdx = idx;
+  activeProject.data.edit = { index: idx, value: rows[idx].title };
+  saveBrowser(activeProject);
   render();
   const ta = document.getElementById('edit-ta-' + idx);
   if (ta) { ta.focus(); const len = ta.value.length; ta.setSelectionRange(len, len); }
@@ -302,8 +309,13 @@ function startEdit(idx) {
 
 function commitEdit(idx, val) {
   if (val.trim()) rows[idx].title = val;
-  editingIdx = null;
+  endEdit();
   pushHistory(); render(); saveRows(); mainInput.focus();
+}
+
+function endEdit() {
+  editingIdx = null;
+  activeProject.data.edit = null;
 }
 
 function render() {
@@ -313,6 +325,7 @@ function render() {
 
   if (!rows.length) {
     rowList.innerHTML = '<div class="no-rows">テロップを入力して追加してください</div>';
+    updateColorPickerBar();
     updateScBtns([]); return;
   }
 
@@ -341,8 +354,7 @@ function render() {
 
     let bodyHtml;
     if (isEdit) {
-      const esc = r.title.replace(/&/g,'&amp;').replace(/</g,'&lt;');
-      bodyHtml = '<div class="row-body"><textarea id="edit-ta-' + i + '" class="row-edit-ta" rows="2">' + esc + '</textarea>'
+      bodyHtml = '<div class="row-body"><textarea id="edit-ta-' + i + '" class="row-edit-ta" rows="2"></textarea>'
         + '<div class="row-edit-hint">Enter: 確定 &nbsp; Shift+Enter: 改行 &nbsp; Esc: キャンセル</div>'
         + '<div class="row-badges">' + badgesHtml + '</div></div>';
     } else {
@@ -375,7 +387,11 @@ function render() {
 
     div.querySelector('.row-del').addEventListener('click', e => {
       e.stopPropagation();
-      if (editingIdx === i) editingIdx = null;
+      if (editingIdx === i) endEdit();
+      else if (editingIdx !== null && i < editingIdx) {
+        editingIdx--;
+        activeProject.data.edit.index = editingIdx;
+      }
       rows.splice(i, 1);
       if (selectedIdx >= rows.length) selectedIdx = rows.length > 0 ? rows.length - 1 : null;
       pushHistory(); render(); saveRows();
@@ -383,9 +399,16 @@ function render() {
 
     if (isEdit) {
       const ta = div.querySelector('textarea');
+      ta.value = activeProject.data.edit.value;
+      ta.addEventListener('input', () => {
+        activeProject.data.edit.value = ta.value;
+        saveBrowser(activeProject);
+      });
       ta.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); commitEdit(i, ta.value); }
-        if (e.key === 'Escape') { editingIdx = null; render(); mainInput.focus(); }
+        if (e.key === 'Escape' && !e.isComposing) {
+          endEdit(); saveBrowser(activeProject); render(); mainInput.focus();
+        }
         e.stopPropagation();
       });
       ta.addEventListener('click', e => e.stopPropagation());
@@ -414,7 +437,7 @@ function updateScBtns(actions) {
 
 function addRow() {
   const val = mainInput.value;
-  if (!val.trim()) return;
+  if (editingIdx !== null || !val.trim()) return;
   const newRow = { title: val, actions: ['通常'] };
   if (selectedIdx !== null && selectedIdx < rows.length) {
     rows.splice(selectedIdx + 1, 0, newRow);
@@ -430,6 +453,11 @@ mainInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); addRow(); return; }
   if (e.key === 'Enter' && e.ctrlKey && !e.isComposing) { e.preventDefault(); return; }
 
+});
+
+mainInput.addEventListener('input', () => {
+  activeProject.data.draft = mainInput.value;
+  saveBrowser(activeProject);
 });
 
 document.addEventListener('keydown', e => {
@@ -490,6 +518,7 @@ async function sbFetch(path, options={}) {
       'Prefer': 'return=representation',
       ...( options.headers || {} )
     },
+    signal: AbortSignal.timeout(12000),
     ...options
   });
   if (!res.ok) throw new Error(await res.text());
@@ -497,97 +526,247 @@ async function sbFetch(path, options={}) {
 }
 
 let currentProject = 'default';
-let projectList = [];
+let projectList = ['default'];
 
-async function saveRows() {
+const projectSelect = document.getElementById('project-select');
+const retryButton = document.getElementById('retry-btn');
+const projectStates = new Map();
+let activeProject;
+
+function getProject(name) {
+  if (projectStates.has(name)) return projectStates.get(name);
+  const key = STORAGE_KEY + 'project:' + name;
+  const project = {
+    name, key, stored: null, tabOnly: false, localSaved: false,
+    cloudStatus: 'クラウド確認中', saving: false, revision: 0,
+    data: { rows: [], draft: '', edit: null, pending: false, cloudRows: null, cloudWrite: null }
+  };
   try {
-    await sbFetch('rows?project=eq.' + encodeURIComponent(currentProject), { method: 'DELETE' });
-    if (rows.length === 0) return;
-    const payload = rows.map(r => ({
-      title: r.title,
-      actions: JSON.stringify(r.actions || ['通常']),
-      project: currentProject
-    }));
-    await sbFetch('rows', { method: 'POST', body: JSON.stringify(payload) });
-  } catch(e) { console.error('save error:', e); }
+    const tabCopy = sessionStorage.getItem(key);
+    project.stored = localStorage.getItem(key);
+    const cached = JSON.parse(tabCopy ?? project.stored);
+    if (cached && Array.isArray(cached.rows) && typeof cached.draft === 'string') {
+      project.data = cached;
+      project.tabOnly = tabCopy !== null;
+      project.localSaved = true;
+      if (project.tabOnly) project.cloudStatus = 'クラウド未同期（別タブで変更あり）';
+    }
+  } catch (error) { console.error('browser load error:', error); }
+  projectStates.set(name, project);
+  return project;
 }
 
-async function loadRows() {
+function updateSaveStatus() {
+  const project = activeProject;
+  const status = document.getElementById('panel-status');
+  const warning = project.tabOnly || project.cloudStatus.includes('未同期') || project.cloudStatus.includes('失敗');
+  const browserStatus = project.localSaved ? (project.tabOnly ? 'このタブに退避済み' : 'ブラウザ保存済み')
+    : 'ブラウザ未保存';
+  const hasDraft = project.data.draft || project.data.edit?.value !== undefined;
+  const draftStatus = hasDraft && project.localSaved ? ' · 下書きは端末内' : '';
+  status.textContent = browserStatus + ' · ' + project.cloudStatus + draftStatus;
+  status.dataset.warning = warning || !project.localSaved;
+  retryButton.hidden = project.tabOnly || project.saving
+    || (!project.data.pending && !project.cloudStatus.includes('失敗'));
+}
+
+function saveBrowser(project) {
+  const snapshot = JSON.stringify(project.data);
+  project.localSaved = false;
   try {
-    setStatus('読み込み中...');
-    const data = await sbFetch('rows?project=eq.' + encodeURIComponent(currentProject) + '&order=id.asc');
-    rows = data.map(r => ({
-      title: r.title,
-      actions: JSON.parse(r.actions || '["通常"]')
-    }));
-    selectedIdx = rows.length > 0 ? rows.length - 1 : null;
-    setStatus('');
-  } catch(e) {
-    console.error('load error:', e);
-    setStatus('読み込みエラー');
+    if (project.stored !== localStorage.getItem(project.key)) project.tabOnly = true;
+    if (project.tabOnly) {
+      sessionStorage.setItem(project.key, snapshot);
+      project.cloudStatus = 'クラウド未同期（別タブで変更あり）';
+    } else {
+      localStorage.setItem(project.key, snapshot);
+      project.stored = snapshot;
+    }
+    project.localSaved = true;
+  } catch (error) { console.error('browser save error:', error); }
+  if (project === activeProject) updateSaveStatus();
+  return project.localSaved && !project.tabOnly;
+}
+
+function cloudRows(list) {
+  return JSON.stringify(list.map(row => ({ title: row.title, actions: row.actions || ['通常'] })));
+}
+
+async function readCloudRows(project) {
+  const path = 'rows?select=title,actions&project=eq.' + encodeURIComponent(project.name) + '&order=id.asc';
+  const result = [];
+  while (true) {
+    const page = await sbFetch(path + '&limit=500&offset=' + result.length);
+    if (!page.length) return result;
+    for (const row of page) {
+      result.push({ title: row.title, actions: JSON.parse(row.actions || '["通常"]') });
+    }
+  }
+}
+
+function saveRows() {
+  const project = activeProject;
+  project.data.rows = rows;
+  project.data.draft = mainInput.value;
+  project.data.pending = true;
+  project.revision++;
+  project.cloudStatus = 'クラウド未同期';
+  if (saveBrowser(project)) syncRows(project);
+}
+
+async function syncRows(project) {
+  if (project.saving || project.tabOnly) return;
+  project.saving = true;
+  project.cloudStatus = 'クラウド保存中…';
+  if (project === activeProject) updateSaveStatus();
+  const synchronize = async () => {
+    while (project.data.pending) {
+      if (!saveBrowser(project)) {
+        if (!project.tabOnly) project.cloudStatus = 'クラウド未同期（ブラウザ保存に失敗）';
+        return;
+      }
+      const revision = project.revision;
+      const desired = cloudRows(project.data.rows);
+      const remote = cloudRows(await readCloudRows(project));
+      if (revision !== project.revision) continue;
+      if (remote !== desired) {
+        // 未読込・別端末で更新されたデータを、手元のデータで削除しない。
+        const canWriteEmpty = remote === '[]' && (project.data.cloudRows === null || project.data.cloudWrite !== null);
+        if (remote !== project.data.cloudRows && remote !== project.data.cloudWrite && !canWriteEmpty) {
+          project.cloudStatus = 'クラウド未同期（内容が異なります。CSV保存可）';
+          return;
+        }
+        project.data.cloudWrite = desired;
+        if (!saveBrowser(project)) {
+          if (!project.tabOnly) project.cloudStatus = 'クラウド未同期（ブラウザ保存に失敗）';
+          return;
+        }
+        const payload = JSON.parse(desired).map(row => ({
+          title: row.title,
+          actions: JSON.stringify(row.actions),
+          project: project.name
+        }));
+        if (remote !== '[]') {
+          await sbFetch('rows?project=eq.' + encodeURIComponent(project.name), { method: 'DELETE' });
+        }
+        if (payload.length) await sbFetch('rows', { method: 'POST', body: JSON.stringify(payload) });
+      }
+      project.data.cloudRows = desired;
+      project.data.cloudWrite = null;
+      project.data.pending = project.revision !== revision;
+      project.cloudStatus = project.data.pending ? 'クラウド保存中…' : 'クラウド保存済み';
+      if (!saveBrowser(project)) return;
+    }
+  };
+  try {
+    if (navigator.locks) await navigator.locks.request(project.key, synchronize);
+    else await synchronize();
+  } catch (error) {
+    project.cloudStatus = 'クラウド未同期（保存に失敗）';
+    console.error('cloud save error:', error);
+  } finally {
+    project.saving = false;
+    if (project === activeProject) updateSaveStatus();
+  }
+}
+
+async function loadRows(project) {
+  const revision = project.revision;
+  try {
+    const remote = await readCloudRows(project);
+    if (project.revision !== revision || project.saving || project.tabOnly) return;
+    const remoteRows = cloudRows(remote);
+    if (project.data.pending) {
+      if (remoteRows === cloudRows(project.data.rows)) {
+        project.data.cloudRows = remoteRows;
+        project.data.cloudWrite = null;
+        project.data.pending = false;
+        project.cloudStatus = 'クラウド保存済み';
+        saveBrowser(project);
+      } else {
+        project.cloudStatus = 'クラウド未同期（ブラウザの内容を表示中）';
+      }
+      return;
+    }
+    if (remoteRows !== cloudRows(project.data.rows)) {
+      if (remote.length === 0 && project.data.rows.length) {
+        project.cloudStatus = 'クラウド未同期（クラウドに行がありません。CSV保存可）';
+        return;
+      }
+      if (project.data.edit) {
+        project.cloudStatus = 'クラウド未同期（編集中。CSV保存可）';
+        return;
+      }
+      project.data.rows = remote;
+      if (project === activeProject) showProjectRows();
+    }
+    project.data.cloudRows = remoteRows;
+    project.cloudStatus = 'クラウド保存済み';
+    saveBrowser(project);
+  } catch (error) {
+    if (project.revision === revision && !project.saving && !project.tabOnly) {
+      project.cloudStatus = 'クラウド未同期（読み込みに失敗）';
+    }
+    console.error('cloud load error:', error);
+  } finally {
+    if (project === activeProject) updateSaveStatus();
   }
 }
 
 async function loadProjects() {
   try {
     const data = await sbFetch('rows?select=project&order=project.asc');
-    const names = [...new Set(data.map(r => r.project).filter(Boolean))];
-    if (!names.includes('default')) names.unshift('default');
-    projectList = names;
+    const names = data.map(row => row.project).filter(Boolean);
+    projectList = [...new Set([...projectList, ...names])];
     renderProjectSelect();
-  } catch(e) { console.error('project load error:', e); }
+  } catch (error) { console.error('project load error:', error); }
 }
 
 function renderProjectSelect() {
-  const sel = document.getElementById('project-select');
-  sel.innerHTML = '';
-  projectList.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p; opt.textContent = p;
-    if (p === currentProject) opt.selected = true;
-    sel.appendChild(opt);
-  });
+  projectSelect.replaceChildren(...projectList.map(name => new Option(name, name, false, name === currentProject)));
 }
 
-document.getElementById('project-select').addEventListener('change', async e => {
-  currentProject = e.target.value;
-  rows = []; selectedIdx = null; editingIdx = null;
+function showProjectRows() {
+  rows = activeProject.data.rows;
+  editingIdx = rows[activeProject.data.edit?.index] ? activeProject.data.edit.index : null;
+  selectedIdx = editingIdx ?? (rows.length ? rows.length - 1 : null);
+  history = [];
+  historyIdx = -1;
+  pushHistory();
   render();
-  await loadRows();
-  render();
-});
+}
 
-document.getElementById('new-project-btn').addEventListener('click', async () => {
-  const name = prompt('新しいプロジェクト名を入力してください');
-  if (!name || !name.trim()) return;
-  const trimmed = name.trim();
-  if (projectList.includes(trimmed)) {
-    currentProject = trimmed;
-    renderProjectSelect();
-    rows = []; selectedIdx = null; editingIdx = null;
-    render();
-    await loadRows();
-    render();
-    return;
+function openProject(name) {
+  currentProject = name;
+  activeProject = getProject(name);
+  if (!projectList.includes(name)) projectList.push(name);
+  try {
+    localStorage.setItem(STORAGE_KEY + 'active', name);
+    sessionStorage.setItem(STORAGE_KEY + 'active', name);
   }
-  projectList.push(trimmed);
-  currentProject = trimmed;
-  rows = []; selectedIdx = null; editingIdx = null;
+  catch (error) { console.error('project selection save error:', error); }
   renderProjectSelect();
-  render();
-});
-function setStatus(msg) {
-  const el = document.getElementById('panel-status');
-  if (el) el.textContent = msg;
+  mainInput.value = activeProject.data.draft;
+  showProjectRows();
+  updateSaveStatus();
+  loadRows(activeProject);
 }
+
+projectSelect.addEventListener('change', () => openProject(projectSelect.value));
+document.getElementById('new-project-btn').addEventListener('click', () => {
+  const name = prompt('新しいプロジェクト名を入力してください')?.trim();
+  if (name) openProject(name);
+});
+retryButton.addEventListener('click', () => {
+  if (activeProject.data.pending) syncRows(activeProject);
+  else { loadProjects(); loadRows(activeProject); }
+});
 
 document.getElementById('reset-btn').addEventListener('click', () => {
   if (!rows.length) return;
   if (!confirm('全件削除します。よろしいですか？')) return;
-  rows = []; selectedIdx = null; editingIdx = null;
-  saveRows(); render();
-  setStatus('リセットしました');
-  setTimeout(() => setStatus(''), 2000);
+  rows = []; selectedIdx = null; endEdit();
+  pushHistory(); saveRows(); render();
 });
 
 document.getElementById('csv-btn').addEventListener('click', () => {
@@ -679,8 +858,7 @@ function updateColorPickerBar() {
 
 buildColorPickerBar();
 
-buildScBar(); render(); mainInput.focus();
-pushHistory(); // 初期状態を履歴に
+buildScBar();
 // ---- ガイドライン描画 ----
 (function() {
   var canvas = document.getElementById('guide-canvas');
@@ -720,7 +898,21 @@ pushHistory(); // 初期状態を履歴に
   setTimeout(drawGuide, 300);
 })();
 
-loadProjects().then(() => loadRows()).then(() => { render(); history = []; historyIdx = -1; pushHistory(); });
+try {
+  const prefix = STORAGE_KEY + 'project:';
+  for (const storage of [localStorage, sessionStorage]) {
+    for (const key of Object.keys(storage)) {
+      if (key.startsWith(prefix) && !projectList.includes(key.slice(prefix.length))) {
+        projectList.push(key.slice(prefix.length));
+      }
+    }
+  }
+  currentProject = sessionStorage.getItem(STORAGE_KEY + 'active')
+    || localStorage.getItem(STORAGE_KEY + 'active') || 'default';
+} catch (error) { console.error('project selection load error:', error); }
+openProject(currentProject);
+loadProjects();
+if (editingIdx === null) mainInput.focus();
 </script>
 </body>
 </html>
